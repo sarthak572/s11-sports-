@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { useCart } from '@/lib/CartContext';
 import siteData from '@/data/site.json';
 import { useRouter } from 'next/navigation';
+import { Currency, setCurrency, useCurrency } from '@/lib/currency';
 
 export default function Header() {
   const { items, setIsCartOpen } = useCart();
+  const currency = useCurrency();
   const [search, setSearch] = useState('');
   const router = useRouter();
 
@@ -25,10 +27,15 @@ export default function Header() {
           {siteData.announcement}
         </div>
         <div className="flex items-center space-x-6 ml-auto">
-          <span className="cursor-pointer flex items-center">
-            INR
-            <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-          </span>
+          <select
+            aria-label="Currency"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value as Currency)}
+            className="bg-transparent text-white uppercase tracking-widest cursor-pointer outline-none"
+          >
+            <option value="INR" className="text-black">₹ INR</option>
+            <option value="CAD" className="text-black">CA$ CAD</option>
+          </select>
           <Link href="#" className="flex items-center hover:text-gray-300">
             <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
             Login

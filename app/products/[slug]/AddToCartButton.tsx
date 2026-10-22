@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { useCart } from '@/lib/CartContext';
 import { Product } from '@/types';
 import siteData from '@/data/site.json';
+import { formatPrice, productPrice, useCurrency } from '@/lib/currency';
 
 export default function AddToCartButton({ product }: { product: Product }) {
   const { addToCart } = useCart();
+  const currency = useCurrency();
   const [quantity, setQuantity] = useState(1);
   const [variant, setVariant] = useState(product.variants?.[0] || '');
 
@@ -14,7 +16,8 @@ export default function AddToCartButton({ product }: { product: Product }) {
     addToCart(product, quantity, variant);
   };
 
-  const whatsappMsg = encodeURIComponent(`Hi, I want to order ${product.name}${variant ? ` (Size: ${variant})` : ''} for ₹${product.price}`);
+  const price = formatPrice(productPrice(product, currency).price, currency);
+  const whatsappMsg = encodeURIComponent(`Hi, I want to order ${product.name}${variant ? ` (Size: ${variant})` : ''} for ${price}`);
   const whatsappUrl = `https://wa.me/${siteData.store.phone.replace(/[^0-9]/g, '')}?text=${whatsappMsg}`;
 
   return (

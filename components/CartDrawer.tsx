@@ -2,18 +2,23 @@
 import { useCart } from '@/lib/CartContext';
 import Image from 'next/image';
 import siteData from '@/data/site.json';
+import { formatPrice, productPrice, useCurrency } from '@/lib/currency';
 
 export default function CartDrawer() {
-  const { items, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity, cartTotal } = useCart();
+  const { items, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity } = useCart();
+  const currency = useCurrency();
 
   if (!isCartOpen) return null;
 
+  const unitPrice = (item: (typeof items)[number]) => productPrice(item, currency).price;
+  const cartTotal = items.reduce((total, item) => total + unitPrice(item) * item.quantity, 0);
+
   const generateWhatsAppMessage = () => {
-    let msg = `Hello ${siteData.store.name}, I would like to order:`;
+    let msg = `Hello ${siteData.store.name}, I would like to order:\n`;
     items.forEach(item => {
-      msg += `- ${item.quantity}x ${item.name} ${item.selectedVariant ? `(${item.selectedVariant})` : ''} - ₹${item.price * item.quantity}`;
+      msg += `- ${item.quantity}x ${item.name} ${item.selectedVariant ? `(${item.selectedVariant})` : ''} - ${formatPrice(unitPrice(item) * item.quantity, currency)}\n`;
     });
-    msg += `Total: ₹${cartTotal}`;
+    msg += `Total: ${formatPrice(cartTotal, currency)}`;
     return encodeURIComponent(msg);
   };
 
@@ -38,7 +43,7 @@ export default function CartDrawer() {
                   <div className="flex-1">
                     <h3 className="font-medium line-clamp-1">{item.name}</h3>
                     {item.selectedVariant && <p className="text-sm text-gray-500">Size: {item.selectedVariant}</p>}
-                    <p className="font-bold mt-1">₹{item.price}</p>
+                    <p className="font-bold mt-1">{formatPrice(unitPrice(item), currency)}</p>
                     <div className="flex items-center mt-2 space-x-3">
                       <button className="px-2 bg-gray-100" onClick={() => updateQuantity(item.cartId, item.quantity - 1)}>-</button>
                       <span>{item.quantity}</span>
@@ -55,7 +60,7 @@ export default function CartDrawer() {
           <div className="p-4 border-t bg-gray-50">
             <div className="flex justify-between font-bold text-lg mb-4">
               <span>Subtotal</span>
-              <span>₹{cartTotal}</span>
+              <span>{formatPrice(cartTotal, currency)}</span>
             </div>
             <button className="w-full bg-navy-900 text-white py-3 rounded mb-2 hover:bg-black transition-colors" onClick={() => alert("Checkout coming soon!")}>
               Checkout (Coming Soon)

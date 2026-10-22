@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { products as productsData } from '@/lib/products';
 import siteData from '@/data/site.json';
 import ProductCard from '@/components/ProductCard';
+import PriceTag from '@/components/PriceTag';
 import AddToCartButton from './AddToCartButton'; // Client Component
 
 export function generateStaticParams() {
@@ -51,10 +52,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           <div className="text-sm text-gray-500 uppercase tracking-wider mb-2">{product.brand}</div>
           <h1 className="text-3xl md:text-4xl font-bold mb-4">{product.name}</h1>
           <div className="flex items-center space-x-4 mb-6">
-            <span className="text-2xl font-bold">₹{product.price}</span>
-            {product.compareAtPrice && (
-              <span className="text-lg text-gray-400 line-through">₹{product.compareAtPrice}</span>
-            )}
+            <PriceTag product={product} className="text-2xl font-bold" compareClassName="text-lg text-gray-400 line-through" />
             <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">Incl. of all taxes</span>
           </div>
 

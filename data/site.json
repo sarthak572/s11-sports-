@@ -10,6 +10,9 @@
     "mapPlaceholder": "Map Placeholder"
   },
   "announcement": "Free delivery in Patiala on orders above ₹1999",
+  "currency": {
+    "inrPerCad": 61
+  },
   "brands": [
     "SG", "SS", "Yonex", "Cosco", "Nivia", "Adidas", "Nike", "Puma"
   ],

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Product } from '@/types';
+import PriceTag from '@/components/PriceTag';
 
 export default function ProductCard({ product }: { product: Product }) {
   return (
@@ -19,10 +20,7 @@ export default function ProductCard({ product }: { product: Product }) {
       <div className="text-gray-500 text-[11px] mb-1 uppercase tracking-widest">{product.brand}</div>
       <h3 className="text-[13px] font-medium text-gray-900 group-hover:text-gray-500 transition-colors mb-2 line-clamp-1 px-2">{product.name}</h3>
       <div className="flex items-center justify-center space-x-2 text-[13px]">
-        <span className="font-medium">Rs. {product.price}</span>
-        {product.compareAtPrice && (
-          <span className="text-gray-400 line-through">Rs. {product.compareAtPrice}</span>
-        )}
+        <PriceTag product={product} className="font-medium" compareClassName="text-gray-400 line-through" />
       </div>
     </Link>
   );
