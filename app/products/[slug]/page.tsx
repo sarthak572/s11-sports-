@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import productsData from '@/data/products.json';
+import { products as productsData } from '@/lib/products';
 import siteData from '@/data/site.json';
 import ProductCard from '@/components/ProductCard';
 import AddToCartButton from './AddToCartButton'; // Client Component

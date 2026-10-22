@@ -1,5 +1,5 @@
 import ProductCard from '@/components/ProductCard';
-import productsData from '@/data/products.json';
+import { products as productsData } from '@/lib/products';
 import siteData from '@/data/site.json';
 import { notFound } from 'next/navigation';
 

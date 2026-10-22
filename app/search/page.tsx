@@ -1,7 +1,7 @@
 'use client';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
-import productsData from '@/data/products.json';
+import { products as productsData } from '@/lib/products';
 import ProductCard from '@/components/ProductCard';
 import { Product } from '@/types';
 
@@ -18,7 +18,7 @@ function SearchResults() {
         p.brand.toLowerCase().includes(lowerQ) ||
         p.category.toLowerCase().includes(lowerQ)
       );
-      setResults(filtered as Product[]);
+      setResults(filtered);
     } else {
       setResults([]);
     }

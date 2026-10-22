@@ -6,6 +6,7 @@ export interface Product {
   category: string;
   subcategory: string;
   price: number;
+  priceCad?: number | null;
   compareAtPrice: number | null;
   description: string;
   specs: { name: string; value: string }[];

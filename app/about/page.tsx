@@ -8,7 +8,7 @@ export default function AboutPage() {
         <h1 className="text-4xl font-bold mb-8 text-center">About {siteData.store.name}</h1>
         
         <div className="relative h-80 md:h-[400px] rounded-xl overflow-hidden mb-12">
-          <Image src="/sportsdemo/images/store/about-us.webp" alt="About Us" fill className="object-cover" />
+          <Image src="/s11-sports-/images/store/about-us.webp" alt="About Us" fill className="object-cover" />
         </div>
         
         <div className="prose prose-lg max-w-none text-gray-700 space-y-6">

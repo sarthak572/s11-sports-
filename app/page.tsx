@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import siteData from '@/data/site.json';
-import productsData from '@/data/products.json';
+import { products as productsData } from '@/lib/products';
 import ProductCard from '@/components/ProductCard';
 
 export default function Home() {
@@ -12,7 +12,7 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative w-full h-[600px] bg-gray-100 flex flex-col justify-center items-center overflow-hidden">
         <Image 
-          src="/sportsdemo/images/hero/hero-video-poster.webp"
+          src="/s11-sports-/images/hero/hero-video-poster.webp"
           alt="Sports Store"
           fill
           priority
@@ -58,7 +58,7 @@ export default function Home() {
           {siteData.categories.slice(0, 5).map(cat => (
             <Link key={cat.slug} href={`/collections/${cat.slug}`} className="group block text-center">
               <div className="relative aspect-[4/5] bg-gray-100 mb-4 overflow-hidden">
-                <Image src={`/sportsdemo/images/categories/${cat.slug}.webp`} alt={cat.name} fill unoptimized className="object-cover group-hover:scale-105 transition-transform duration-700" />
+                <Image src={`/s11-sports-/images/categories/${cat.slug}.webp`} alt={cat.name} fill unoptimized className="object-cover group-hover:scale-105 transition-transform duration-700" />
               </div>
               <h3 className="text-[13px] font-medium tracking-wider uppercase group-hover:text-gray-500">{cat.name}</h3>
             </Link>

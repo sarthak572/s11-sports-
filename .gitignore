@@ -34,3 +34,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# product photos downloaded from the Google Sheet at build time
+/public/images/products/sheet/
