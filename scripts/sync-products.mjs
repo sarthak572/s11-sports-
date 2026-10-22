@@ -51,8 +51,9 @@ function toCsvUrl(url) {
   // Accept a normal sheet link and turn it into its CSV export.
   const m = url.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]{20,})/);
   if (m && m[1] !== 'e') {
-    const gid = url.match(/[#&?]gid=(\d+)/)?.[1] ?? '0';
-    return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv&gid=${gid}`;
+    // Without a gid Google exports the first tab. Don't assume gid=0: imported sheets get random tab ids.
+    const gid = url.match(/[#&?]gid=(\d+)/)?.[1];
+    return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
   }
   return url;
 }
@@ -177,7 +178,10 @@ async function main() {
 
   console.log('Fetching product sheet...');
   const res = await fetch(toCsvUrl(SHEET_URL), { redirect: 'follow' });
-  if (!res.ok) throw new Error(`Could not download the sheet (HTTP ${res.status}). Is it shared as "Anyone with the link can view"?`);
+  if (!res.ok) {
+    throw new Error(`Could not download the sheet (HTTP ${res.status}). Check that it is shared as "Anyone with the link can view", ` +
+      'and that it is a real Google Sheet: an uploaded .xlsx/.csv opened in Sheets must first be converted with File → Save as Google Sheets.');
+  }
   const csv = await res.text();
   if (/^\s*<(!doctype|html)/i.test(csv)) {
     throw new Error('The sheet link returned a web page instead of CSV. Share the sheet as "Anyone with the link can view".');
