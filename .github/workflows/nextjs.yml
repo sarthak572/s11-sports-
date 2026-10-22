@@ -5,9 +5,10 @@ on:
   push:
     branches: ["main"]
   workflow_dispatch:
-  # Rebuild every hour so product changes in the Google Sheet go live automatically
+  # Daily rebuild (3:00 AM India time) so Google Sheet changes go live even if nobody publishes.
+  # The sheet's "Publish" button / auto-publish (scripts/google-sheet-publish-button.gs) update it sooner.
   schedule:
-    - cron: "17 * * * *"
+    - cron: "30 21 * * *"
 
 permissions:
   contents: read
