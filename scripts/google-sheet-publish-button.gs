@@ -89,3 +89,129 @@ function autoPublishIfChanged() {
   const result = triggerBuild_();
   if (!result.ok) console.error(result.message);
 }
+
+// One-time setup: creates a formatted tab per website category and moves the products from
+// the old single "all products" tab into them. The old tab is kept (hidden) as a backup.
+// Run it from the Apps Script editor (select setupCategoryTabs → Run). Tabs that already
+// exist are left untouched, so it is safe to run again after adding a category below.
+// Category names must match data/site.json in the website code.
+const CATEGORIES = [
+  { name: 'Cricket', subcategories: ['Bats', 'Balls', 'Pads', 'Gloves', 'Helmets', 'Kits', 'Apparel'] },
+  { name: 'Badminton', subcategories: ['Rackets', 'Shuttles', 'Strings', 'Bags', 'Shoes'] },
+  { name: 'Football', subcategories: ['Footballs', 'Boots', 'Shin Guards', 'Goalkeeper Gear'] },
+  { name: 'Gym and Fitness', subcategories: ['Dumbbells', 'Resistance Bands', 'Mats', 'Gloves', 'Supplements Shakers'] },
+  { name: 'Tennis and Table Tennis', subcategories: ['Tennis Rackets', 'Table Tennis Bats', 'Balls'] },
+  { name: 'Indoor Games', subcategories: ['Carrom', 'Chess'] },
+  { name: 'Athletics and Running', subcategories: ['Running Shoes', 'Apparel', 'Spikes'] },
+  { name: 'Footwear', subcategories: ['Cricket Shoes', 'Badminton Shoes', 'Football Boots', 'Running Shoes'] },
+  { name: 'Apparel', subcategories: ['Jerseys', 'Shorts', 'Trackpants', 'Socks'] },
+  { name: 'Accessories', subcategories: ['Bags', 'Bottles', 'Supports', 'Grips'] },
+];
+
+// [header, width in px, help note shown when hovering the header]
+const PRODUCT_COLUMNS = [
+  ['show', 70, 'yes = shown on the website, no = hidden (row turns grey). Empty also means shown.'],
+  ['name', 240, 'Product name as shown on the website.'],
+  ['brand', 110, 'Brand, e.g. SG, Yonex, Nivia.'],
+  ['subcategory', 150, 'Pick from the list. These match the sub-sections on the website.'],
+  ['price', 95, 'Selling price in rupees. Numbers only, e.g. 1299.'],
+  ['compare_price', 115, 'Optional. Old price / MRP, shown crossed out next to the price.'],
+  ['price_cad', 95, 'Price in Canadian dollars for visitors from Canada.'],
+  ['sizes', 150, 'Optional. Sizes or options separated by commas, e.g. S, M, L.'],
+  ['tags', 130, 'Optional. new = "New" badge, bestseller = shown on the home page.'],
+  ['images', 280, 'Google Drive photo link(s). The photo (or its folder) must be shared as "Anyone with the link". Several links: separate with a space.'],
+  ['description', 320, 'Product description shown on the product page.'],
+  ['specs', 280, 'Optional. Format: Material: Willow; Weight: 1.2 kg'],
+  ['id', 70, 'Internal ID used by the website. Leave as is; empty is fine for new products.'],
+];
+
+function setupCategoryTabs() {
+  const ss = SpreadsheetApp.getActive();
+  const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+  // The old layout: one tab holding every product with a "category" column.
+  const source = ss.getSheets().find((sh) => {
+    const header = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
+    return header.map((h) => String(h).trim().toLowerCase()).includes('category');
+  });
+  const sourceData = source ? source.getDataRange().getValues() : [[]];
+  const sourceHeader = sourceData[0].map((h) => String(h).trim().toLowerCase());
+  const sourceCol = (name) => sourceHeader.indexOf(name);
+
+  const created = [];
+  CATEGORIES.forEach((cat, i) => {
+    if (ss.getSheetByName(cat.name)) return;
+    const sheet = ss.insertSheet(cat.name, i);
+    const rows = sourceData.slice(1)
+      .filter((r) => sourceCol('category') !== -1 && slug(r[sourceCol('category')]) === slug(cat.name))
+      .map((r) => PRODUCT_COLUMNS.map(([h]) => (sourceCol(h) === -1 ? '' : r[sourceCol(h)])));
+    formatProductTab_(sheet, cat, rows);
+    created.push(`${cat.name} (${rows.length})`);
+  });
+
+  if (source && created.length) {
+    source.setName('Backup - old all products');
+    source.setTabColor('#9ca3af');
+    ss.setActiveSheet(source);
+    ss.moveActiveSheet(ss.getNumSheets());
+    source.hideSheet();
+  }
+  const publish = ss.getSheetByName('Publish');
+  if (publish) {
+    ss.setActiveSheet(publish);
+    ss.moveActiveSheet(1);
+  }
+  console.log(created.length ? `Created tabs: ${created.join(', ')}` : 'All category tabs already exist.');
+}
+
+function formatProductTab_(sheet, category, rows) {
+  const cols = PRODUCT_COLUMNS.length;
+  const maxRows = 500;
+  if (sheet.getMaxRows() < maxRows) sheet.insertRowsAfter(sheet.getMaxRows(), maxRows - sheet.getMaxRows());
+  if (sheet.getMaxColumns() > cols) sheet.deleteColumns(cols + 1, sheet.getMaxColumns() - cols);
+  const col = (name) => PRODUCT_COLUMNS.findIndex(([h]) => h === name) + 1;
+  const body = (name) => sheet.getRange(2, col(name), maxRows - 1, 1);
+
+  const header = sheet.getRange(1, 1, 1, cols);
+  header.setValues([PRODUCT_COLUMNS.map(([h]) => h)]);
+  if (rows.length) sheet.getRange(2, 1, rows.length, cols).setValues(rows);
+
+  sheet.getRange(1, 1, maxRows, cols)
+    .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, true, false)
+    .setHeaderRowColor('#1f2937')
+    .setFirstRowColor('#ffffff')
+    .setSecondRowColor('#f3f4f6');
+  header.setFontColor('#ffffff').setFontWeight('bold').setVerticalAlignment('middle');
+  sheet.setRowHeight(1, 34);
+  sheet.setFrozenRows(1);
+  sheet.setFrozenColumns(2);
+  sheet.getRange(2, 1, maxRows - 1, cols).setVerticalAlignment('middle').setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+  PRODUCT_COLUMNS.forEach(([, width, note], i) => {
+    sheet.setColumnWidth(i + 1, width);
+    sheet.getRange(1, i + 1).setNote(note);
+  });
+
+  const list = (values, strict, help) => SpreadsheetApp.newDataValidation()
+    .requireValueInList(values, true).setAllowInvalid(!strict).setHelpText(help).build();
+  body('show').setDataValidation(list(['yes', 'no'], true, 'Choose yes (show) or no (hide).')).setHorizontalAlignment('center');
+  body('subcategory').setDataValidation(list(category.subcategories, false, `Sub-sections of ${category.name} on the website.`));
+  body('tags').setDataValidation(list(['new', 'bestseller', 'new, bestseller'], true, 'Leave empty, or choose new / bestseller.'));
+  const price = SpreadsheetApp.newDataValidation().requireNumberGreaterThan(0).setAllowInvalid(false)
+    .setHelpText('Enter a number only, e.g. 1299').build();
+  ['price', 'compare_price', 'price_cad'].forEach((name) => body(name).setDataValidation(price));
+  body('price').setNumberFormat('"₹"#,##0');
+  body('compare_price').setNumberFormat('"₹"#,##0');
+  body('price_cad').setNumberFormat('"CA$"#,##0.00');
+  body('id').setFontColor('#9ca3af');
+  body('id').protect().setDescription('Website product ID').setWarningOnly(true);
+
+  sheet.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$A2="no"')
+      .setFontColor('#9ca3af').setStrikethrough(true)
+      .setRanges([sheet.getRange(2, 1, maxRows - 1, cols)])
+      .build(),
+  ]);
+  sheet.getRange(1, 1, maxRows, cols).createFilter();
+  sheet.setTabColor('#16a34a');
+}

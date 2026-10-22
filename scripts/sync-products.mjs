@@ -2,6 +2,10 @@
 // Runs in the GitHub Action before `next build`. When PRODUCTS_SHEET_URL is not set it
 // does nothing, so local development keeps using the committed products.json.
 //
+// Sheet layout: one tab per website category, named like the category in site.json
+// ("Cricket", "Badminton", ...). Other tabs (Publish, backups) are ignored. A sheet with
+// no category tabs is read as a single table with a "category" column instead.
+//
 // Product photos linked in the sheet (Google Drive, Cloudinary, any public URL) are
 // downloaded, resized and converted to WebP, then served from the site itself.
 
@@ -9,6 +13,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import ExcelJS from 'exceljs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHEET_URL = process.env.PRODUCTS_SHEET_URL?.trim();
@@ -49,15 +54,61 @@ const warn = (msg) => {
   console.log(process.env.GITHUB_ACTIONS ? `::warning::${msg}` : `WARNING: ${msg}`);
 };
 
-function toCsvUrl(url) {
-  // Accept a normal sheet link and turn it into its CSV export.
-  const m = url.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]{20,})/);
-  if (m && m[1] !== 'e') {
-    // Without a gid Google exports the first tab. Don't assume gid=0: imported sheets get random tab ids.
-    const gid = url.match(/[#&?]gid=(\d+)/)?.[1];
-    return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
+async function downloadSheet(url) {
+  const res = await fetch(url, { redirect: 'follow' });
+  if (!res.ok) {
+    throw new Error(`Could not download the sheet (HTTP ${res.status}). Check that it is shared as "Anyone with the link can view", ` +
+      'and that it is a real Google Sheet: an uploaded .xlsx/.csv opened in Sheets must first be converted with File → Save as Google Sheets.');
   }
-  return url;
+  if ((res.headers.get('content-type') ?? '').startsWith('text/html')) {
+    throw new Error('The sheet link returned a web page instead of the sheet. Share it as "Anyone with the link can view" ' +
+      'and keep "Viewers can download, print and copy" allowed in the share settings.');
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
+function cellText(value) {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value !== 'object') return String(value);
+  if (value.richText) return value.richText.map((r) => r.text).join('');
+  if ('result' in value) return cellText(value.result); // formula
+  if (value.hyperlink) {
+    // Pasted Drive links often become smart chips whose text is the file name.
+    const text = cellText(value.text);
+    return /^https?:\/\//i.test(text) ? text : value.hyperlink;
+  }
+  return value.error ? '' : String(value.text ?? '');
+}
+
+// Returns the sheet's tabs as { name, rows } with every cell as a string.
+async function loadTabs() {
+  const sheetId = SHEET_URL.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]{20,})/)?.[1];
+  if (!sheetId) {
+    // Some other CSV link (e.g. File → Share → Publish to web → CSV): a single table.
+    return [{ name: 'Sheet', rows: parseCsv((await downloadSheet(SHEET_URL)).toString('utf8')) }];
+  }
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await downloadSheet(`https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`));
+  return workbook.worksheets.map((ws) => {
+    const rows = [];
+    ws.eachRow((row, rowNumber) => {
+      const cells = [];
+      for (let c = 1; c <= ws.columnCount; c++) cells.push(cellText(row.getCell(c).value));
+      rows[rowNumber - 1] = cells;
+    });
+    return { name: ws.name.trim(), rows: Array.from(rows, (r) => r ?? []) };
+  });
+}
+
+function columnIndexes(header) {
+  const normalized = header.map((h) => h.trim().toLowerCase().replace(/[\s-]+/g, '_'));
+  const col = {};
+  for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
+    const idx = normalized.findIndex((h) => aliases.includes(h));
+    if (idx !== -1) col[field] = idx;
+  }
+  return col;
 }
 
 function parseCsv(text) {
@@ -179,25 +230,19 @@ async function main() {
   }
 
   console.log('Fetching product sheet...');
-  const res = await fetch(toCsvUrl(SHEET_URL), { redirect: 'follow' });
-  if (!res.ok) {
-    throw new Error(`Could not download the sheet (HTTP ${res.status}). Check that it is shared as "Anyone with the link can view", ` +
-      'and that it is a real Google Sheet: an uploaded .xlsx/.csv opened in Sheets must first be converted with File → Save as Google Sheets.');
-  }
-  const csv = await res.text();
-  if (/^\s*<(!doctype|html)/i.test(csv)) {
-    throw new Error('The sheet link returned a web page instead of CSV. Share the sheet as "Anyone with the link can view".');
-  }
-
-  const [header, ...rows] = parseCsv(csv);
-  const normalized = header.map((h) => h.trim().toLowerCase().replace(/[\s-]+/g, '_'));
-  const col = {};
-  for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
-    const idx = normalized.findIndex((h) => aliases.includes(h));
-    if (idx !== -1) col[field] = idx;
-  }
-  for (const required of ['name', 'category', 'price']) {
-    if (col[required] === undefined) throw new Error(`The sheet is missing the "${required}" column.`);
+  const tabs = await loadTabs();
+  const categoryTabs = tabs.filter((t) => categoryBySlug.has(slugify(t.name)));
+  let tables;
+  if (categoryTabs.length) {
+    tables = categoryTabs.map((t) => ({ ...t, category: categoryBySlug.get(slugify(t.name)) }));
+    console.log(`Reading category tabs: ${tables.map((t) => t.name).join(', ')}`);
+  } else {
+    const single = tabs.find((t) => ['name', 'category', 'price'].every((f) => columnIndexes(t.rows[0] ?? [])[f] !== undefined));
+    if (!single) {
+      throw new Error(`No product tabs found. Name each tab after a website category (${site.categories.map((c) => c.name).join(', ')}), ` +
+        'or use one tab with name, category and price columns.');
+    }
+    tables = [{ ...single, category: null }];
   }
 
   await fs.mkdir(IMAGE_DIR, { recursive: true });
@@ -207,54 +252,64 @@ async function main() {
   const usedSlugs = new Set();
   const usedFiles = new Set();
 
-  for (const [i, row] of rows.entries()) {
-    const get = (field) => (col[field] === undefined ? '' : (row[col[field]] ?? '').trim());
-    const label = `Sheet row ${i + 2}`;
-    const name = get('name');
-    if (!name) continue; // blank row
-
-    if (/^(no|n|false|hide|hidden|0)$/i.test(get('show'))) continue;
-
-    const category = categoryBySlug.get(slugify(get('category')));
-    if (!category) {
-      warn(`${label} "${name}": unknown category "${get('category')}", skipped. Use one of: ${site.categories.map((c) => c.name).join(', ')}`);
+  for (const table of tables) {
+    const [header = [], ...rows] = table.rows;
+    const col = columnIndexes(header);
+    const missing = ['name', 'price', ...(table.category ? [] : ['category'])].filter((f) => col[f] === undefined);
+    if (missing.length) {
+      warn(`Tab "${table.name}" is missing the ${missing.map((f) => `"${f}"`).join(', ')} column, skipped.`);
       continue;
     }
 
-    const price = parsePrice(get('price'));
-    if (price === null || Number.isNaN(price)) {
-      warn(`${label} "${name}": price "${get('price')}" is not a number, skipped.`);
-      continue;
+    for (const [i, row] of rows.entries()) {
+      const get = (field) => (col[field] === undefined ? '' : (row[col[field]] ?? '').trim());
+      const label = `${table.name} row ${i + 2}`;
+      const name = get('name');
+      if (!name) continue; // blank row
+
+      if (/^(no|n|false|hide|hidden|0)$/i.test(get('show'))) continue;
+
+      const category = table.category ?? categoryBySlug.get(slugify(get('category')));
+      if (!category) {
+        warn(`${label} "${name}": unknown category "${get('category')}", skipped. Use one of: ${site.categories.map((c) => c.name).join(', ')}`);
+        continue;
+      }
+
+      const price = parsePrice(get('price'));
+      if (price === null || Number.isNaN(price)) {
+        warn(`${label} "${name}": price "${get('price')}" is not a number, skipped.`);
+        continue;
+      }
+      const compareAtPrice = parsePrice(get('compareAtPrice'));
+      const priceCad = parsePrice(get('priceCad'));
+
+      let slug = slugify(get('slug') || name) || `product-${i + 2}`;
+      for (let n = 2; usedSlugs.has(slug); n++) slug = `${slugify(get('slug') || name)}-${n}`;
+      usedSlugs.add(slug);
+
+      const subcategory = get('subcategory');
+      if (subcategory && !category.subcategories.includes(subcategory)) {
+        warn(`${label} "${name}": subcategory "${subcategory}" is not listed under ${category.name} in site.json.`);
+      }
+
+      const variants = splitList(get('variants'));
+      products.push({
+        id: get('id') || slug,
+        slug,
+        name,
+        brand: get('brand'),
+        category: category.slug,
+        subcategory,
+        price,
+        priceCad: Number.isNaN(priceCad) ? null : priceCad,
+        compareAtPrice: Number.isNaN(compareAtPrice) || !compareAtPrice ? null : compareAtPrice,
+        description: get('description'),
+        specs: parseSpecs(get('specs')),
+        variants: variants.length ? variants : null,
+        imagePaths: await resolveImages(get('images'), `${label} "${name}"`, usedFiles),
+        tags: splitList(get('tags')).map((t) => t.toLowerCase()),
+      });
     }
-    const compareAtPrice = parsePrice(get('compareAtPrice'));
-    const priceCad = parsePrice(get('priceCad'));
-
-    let slug = slugify(get('slug') || name) || `product-${i + 2}`;
-    for (let n = 2; usedSlugs.has(slug); n++) slug = `${slugify(get('slug') || name)}-${n}`;
-    usedSlugs.add(slug);
-
-    const subcategory = get('subcategory');
-    if (subcategory && !category.subcategories.includes(subcategory)) {
-      warn(`${label} "${name}": subcategory "${subcategory}" is not listed under ${category.name} in site.json.`);
-    }
-
-    const variants = splitList(get('variants'));
-    products.push({
-      id: get('id') || slug,
-      slug,
-      name,
-      brand: get('brand'),
-      category: category.slug,
-      subcategory,
-      price,
-      priceCad: Number.isNaN(priceCad) ? null : priceCad,
-      compareAtPrice: Number.isNaN(compareAtPrice) || !compareAtPrice ? null : compareAtPrice,
-      description: get('description'),
-      specs: parseSpecs(get('specs')),
-      variants: variants.length ? variants : null,
-      imagePaths: await resolveImages(get('images'), `${label} "${name}"`, usedFiles),
-      tags: splitList(get('tags')).map((t) => t.toLowerCase()),
-    });
   }
 
   if (products.length === 0) {
