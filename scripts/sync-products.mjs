@@ -41,6 +41,8 @@ const COLUMN_ALIASES = {
 };
 
 const warnings = [];
+// ::notice:: lines appear on the workflow run's summary page, so the sheet status is visible at a glance.
+const notice = (msg) => console.log(process.env.GITHUB_ACTIONS ? `::notice::${msg}` : msg);
 const warn = (msg) => {
   warnings.push(msg);
   // GitHub shows ::warning:: lines on the workflow run summary page.
@@ -165,7 +167,7 @@ async function resolveImages(cell, label, usedFiles) {
 
 async function main() {
   if (!SHEET_URL) {
-    console.log('PRODUCTS_SHEET_URL is not set; keeping the existing data/products.json.');
+    notice('Google Sheet NOT linked: PRODUCTS_SHEET_URL repository variable is not set, using the products in data/products.json.');
     return;
   }
 
@@ -265,7 +267,7 @@ async function main() {
   }
 
   await fs.writeFile(PRODUCTS_FILE, JSON.stringify(products, null, 2) + '\n');
-  console.log(`Wrote ${products.length} products to data/products.json (${warnings.length} warnings).`);
+  notice(`Google Sheet linked: loaded ${products.length} products from the sheet (${warnings.length} warnings).`);
 }
 
 main().catch((err) => {
